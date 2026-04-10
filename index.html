@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cleaning Roster</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f2f2f7;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    header {
+      width: 100%;
+      background: #1c1c1e;
+      color: #fff;
+      text-align: center;
+      padding: 2rem 1rem 1.5rem;
+    }
+
+    header h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    header .week-label {
+      margin-top: 0.35rem;
+      font-size: 0.82rem;
+      color: rgba(255,255,255,0.5);
+    }
+
+    main {
+      width: 100%;
+      max-width: 420px;
+      padding: 1.25rem 1rem 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 1.5rem 1.25rem 1.25rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+
+    .card .label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: #8e8e93;
+      margin-bottom: 0.6rem;
+    }
+
+    .card .person {
+      font-size: 2.4rem;
+      font-weight: 700;
+      color: #1c1c1e;
+      line-height: 1.1;
+    }
+
+    .card .next-info {
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid #f2f2f7;
+      font-size: 0.78rem;
+      color: #aeaeb2;
+    }
+
+    .card .next-info span {
+      color: #636366;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Cleaning Roster</h1>
+    <div class="week-label" id="week-label"></div>
+  </header>
+
+  <main>
+    <div class="card">
+      <div class="label">Kitchen &amp; Living Room</div>
+      <div class="person" id="kitchen-person"></div>
+      <div class="next-info" id="kitchen-next"></div>
+    </div>
+
+    <div class="card">
+      <div class="label">Toilet</div>
+      <div class="person" id="toilet-person"></div>
+      <div class="next-info" id="toilet-next"></div>
+    </div>
+  </main>
+
+  <script>
+    // Rotation order
+    const KITCHEN = ['Tom', 'Anna-Rose', 'Jacob', 'Liv', 'Jack'];
+    const TOILET  = ['Anna-Rose', 'Jacob', 'Liv', 'Tom'];
+
+    // Reference Monday in London time.
+    // Week of 2026-04-06: Kitchen = Tom, Toilet = Anna-Rose (both index 0).
+    // All future weeks count up from here.
+    const REF_YEAR  = 2026;
+    const REF_MONTH = 4;   // April (1-based)
+    const REF_DAY   = 6;
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
+
+    /** Return [year, month (1-based), day] for 'now' in Europe/London. */
+    function londonYMD(date) {
+      const s = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/London',
+        year:  'numeric',
+        month: '2-digit',
+        day:   '2-digit'
+      }).format(date);
+      return s.split('-').map(Number); // [YYYY, MM, DD]
+    }
+
+    /** Given a London [y,m,d], return a plain local Date at midnight (no TZ shift). */
+    function ymdToDate(y, m, d) {
+      return new Date(y, m - 1, d);
+    }
+
+    /** Return a Date representing the most recent Monday (or today if Monday) in London. */
+    function currentLondonMonday() {
+      const [y, m, d] = londonYMD(new Date());
+      const today = ymdToDate(y, m, d);
+      const dow = today.getDay();                // 0=Sun … 6=Sat
+      const daysBack = dow === 0 ? 6 : dow - 1; // days since Monday
+      return new Date(y, m - 1, d - daysBack);
+    }
+
+    /** Return the Monday after the one we're currently in. */
+    function nextLondonMonday() {
+      const mon = currentLondonMonday();
+      return new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 7);
+    }
+
+    /** How many complete weeks since the reference Monday? */
+    function weekIndex() {
+      const ref = ymdToDate(REF_YEAR, REF_MONTH, REF_DAY);
+      const now = currentLondonMonday();
+      const weeks = Math.round((now - ref) / (7 * 24 * 60 * 60 * 1000));
+      return weeks;
+    }
+
+    /** Modulo that stays non-negative. */
+    function mod(n, m) { return ((n % m) + m) % m; }
+
+    /** Format a Date as "Mon 13 Apr". */
+    function fmtDate(d) {
+      return d.toLocaleDateString('en-GB', {
+        weekday: 'short', day: 'numeric', month: 'short',
+        timeZone: 'Europe/London'
+      });
+    }
+
+    /** Format the week-of header, e.g. "Week of 6 Apr 2026". */
+    function fmtWeekOf(d) {
+      return 'Week of ' + d.toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'short', year: 'numeric',
+        timeZone: 'Europe/London'
+      });
+    }
+
+    // ── Render ───────────────────────────────────────────────────────────────
+
+    const wi = weekIndex();
+
+    const kitchenIdx = mod(wi,     KITCHEN.length);
+    const toiletIdx  = mod(wi,     TOILET.length);
+
+    const kitchenNext = KITCHEN[mod(wi + 1, KITCHEN.length)];
+    const toiletNext  = TOILET[ mod(wi + 1, TOILET.length)];
+
+    const nextMon = nextLondonMonday();
+    const nextStr = fmtDate(nextMon);
+
+    document.getElementById('week-label').textContent    = fmtWeekOf(currentLondonMonday());
+    document.getElementById('kitchen-person').textContent = KITCHEN[kitchenIdx];
+    document.getElementById('toilet-person').textContent  = TOILET[toiletIdx];
+
+    document.getElementById('kitchen-next').innerHTML =
+      `Next: <span>${kitchenNext}</span> &middot; updates ${nextStr}`;
+    document.getElementById('toilet-next').innerHTML  =
+      `Next: <span>${toiletNext}</span> &middot; updates ${nextStr}`;
+  </script>
+
+</body>
+</html>
